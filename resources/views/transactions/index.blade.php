@@ -23,20 +23,32 @@
 
     <div class="bg-white overflow-hidden shadow-sm rounded-lg">
         <div class="p-6 bg-white border-b border-gray-200">
-            <div class="mb-4 flex justify-between items-center">
-                <div class="w-1/3">
-                    <input type="text" id="search" placeholder="Search transactions..." class="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+            <form action="{{ route('transactions.index') }}" method="GET" class="mb-4">
+                <div class="flex justify-between items-center">
+                    <div class="w-1/3">
+                        <input type="text" name="search" id="search" placeholder="Search transactions..." value="{{ request('search') }}" class="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div class="flex space-x-2">
+                        <select name="type" id="type-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">All Types</option>
+                            @foreach($types as $type)
+                                <option value="{{ $type }}" {{ request('type') == $type ? 'selected' : '' }}>
+                                    {{ ucfirst($type) }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <input type="date" name="date" id="date-filter" value="{{ request('date') }}" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:border-indigo-900 focus:ring ring-indigo-300 disabled:opacity-25 transition ease-in-out duration-150">
+                            Filter
+                        </button>
+                        @if(request()->anyFilled(['search', 'type', 'date']))
+                            <a href="{{ route('transactions.index') }}" class="inline-flex items-center px-4 py-2 bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:border-gray-400 focus:ring ring-gray-200 disabled:opacity-25 transition ease-in-out duration-150">
+                                Clear
+                            </a>
+                        @endif
+                    </div>
                 </div>
-                <div class="flex space-x-2">
-                    <select id="type-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">All Types</option>
-                        <option value="purchase">Purchase</option>
-                        <option value="sale">Sale</option>
-                        <option value="adjustment">Adjustment</option>
-                    </select>
-                    <input type="date" id="date-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                </div>
-            </div>
+            </form>
 
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -120,72 +132,4 @@
             </div>
         </div>
     </div>
-
-    @push('scripts')
-    <script>
-        // Client-side search functionality
-        document.getElementById('search').addEventListener('keyup', function() {
-            const searchValue = this.value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const productName = row.querySelector('td:first-child').textContent.toLowerCase();
-                const reference = row.querySelector('td:nth-child(6)').textContent.toLowerCase();
-                
-                if (productName.includes(searchValue) || reference.includes(searchValue)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-
-        // Type filter
-        document.getElementById('type-filter').addEventListener('change', function() {
-            const typeValue = this.value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const type = row.querySelector('td:nth-child(2)').textContent.trim().toLowerCase();
-                
-                if (typeValue === '' || type.includes(typeValue)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-
-        // Date filter
-        document.getElementById('date-filter').addEventListener('change', function() {
-            const dateValue = this.value;
-            if (!dateValue) {
-                // Show all rows if no date is selected
-                document.querySelectorAll('tbody tr').forEach(row => {
-                    row.style.display = '';
-                });
-                return;
-            }
-            
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const dateCell = row.querySelector('td:nth-child(7)').textContent.trim();
-                const transactionDate = new Date(dateCell);
-                const filterDate = new Date(dateValue);
-                
-                // Compare only the date part (ignore time)
-                if (
-                    transactionDate.getFullYear() === filterDate.getFullYear() &&
-                    transactionDate.getMonth() === filterDate.getMonth() &&
-                    transactionDate.getDate() === filterDate.getDate()
-                ) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-    </script>
-    @endpush
 </x-app-layout>

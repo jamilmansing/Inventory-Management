@@ -23,22 +23,36 @@
 
     <div class="bg-white overflow-hidden shadow-sm rounded-lg">
         <div class="p-6 bg-white border-b border-gray-200">
-            <div class="mb-4 flex justify-between items-center">
-                <div class="w-1/3">
-                    <input type="text" id="search" placeholder="Search products..." class="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+            <form action="{{ route('products.index') }}" method="GET" class="mb-4">
+                <div class="flex justify-between items-center">
+                    <div class="w-1/3">
+                        <input type="text" name="search" id="search" placeholder="Search products..." value="{{ request('search') }}" class="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div class="flex space-x-2">
+                        <select name="category" id="category-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">All Categories</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" {{ request('category') == $category->id ? 'selected' : '' }}>
+                                    {{ $category->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <select name="status" id="status-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">All Status</option>
+                            <option value="active" {{ request('status') == 'active' ? 'selected' : '' }}>Active</option>
+                            <option value="inactive" {{ request('status') == 'inactive' ? 'selected' : '' }}>Inactive</option>
+                        </select>
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:border-indigo-900 focus:ring ring-indigo-300 disabled:opacity-25 transition ease-in-out duration-150">
+                            Filter
+                        </button>
+                        @if(request()->anyFilled(['search', 'category', 'status']))
+                            <a href="{{ route('products.index') }}" class="inline-flex items-center px-4 py-2 bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:border-gray-400 focus:ring ring-gray-200 disabled:opacity-25 transition ease-in-out duration-150">
+                                Clear
+                            </a>
+                        @endif
+                    </div>
                 </div>
-                <div class="flex space-x-2">
-                    <select id="category-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">All Categories</option>
-                        <!-- Categories would be populated here -->
-                    </select>
-                    <select id="status-filter" class="rounded-md shadow-sm border-gray-300 focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                </div>
-            </div>
+            </form>
 
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -146,57 +160,4 @@
             </div>
         </div>
     </div>
-
-    @push('scripts')
-    <script>
-        // Client-side search functionality
-        document.getElementById('search').addEventListener('keyup', function() {
-            const searchValue = this.value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const productName = row.querySelector('td:first-child').textContent.toLowerCase();
-                const sku = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
-                
-                if (productName.includes(searchValue) || sku.includes(searchValue)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-
-        // Category filter
-        document.getElementById('category-filter').addEventListener('change', function() {
-            const categoryValue = this.value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const category = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
-                
-                if (categoryValue === '' || category === categoryValue) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-
-        // Status filter
-        document.getElementById('status-filter').addEventListener('change', function() {
-            const statusValue = this.value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-            
-            rows.forEach(row => {
-                const status = row.querySelector('td:nth-child(6)').textContent.trim().toLowerCase();
-                
-                if (statusValue === '' || status === statusValue) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-    </script>
-    @endpush
 </x-app-layout>

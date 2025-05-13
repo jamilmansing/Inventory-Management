@@ -17,11 +17,41 @@ class ProductController extends Controller
         $this->odooService = $odooService;
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with('category')->paginate(15);
-        return view('products.index', compact('products'));
+        // Start with a base query
+        $query = Product::with('category');
+        
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'like', "%{$searchTerm}%")
+                  ->orWhere('sku', 'like', "%{$searchTerm}%")
+                  ->orWhere('description', 'like', "%{$searchTerm}%");
+            });
+        }
+        
+        // Apply category filter
+        if ($request->has('category') && !empty($request->category)) {
+            $query->where('category_id', $request->category);
+        }
+        
+        // Apply status filter
+        if ($request->has('status') && !empty($request->status)) {
+            $query->where('status', $request->status);
+        }
+        
+        // Get all categories for the filter dropdown
+        $categories = Category::all();
+        
+        // Execute the query with pagination
+        $products = $query->paginate(15)->withQueryString();
+        
+        return view('products.index', compact('products', 'categories'));
     }
+
+    // Other methods remain unchanged...
 
     public function create()
     {
@@ -48,6 +78,9 @@ class ProductController extends Controller
             $path = $request->file('image')->store('products', 'public');
             $validated['image_path'] = $path;
         }
+        // Convert image to base64 for Odoo
+        $imageContents = Storage::disk('public')->get($path);
+        $validated['image_1920'] = base64_encode($imageContents); // Key for Odoo's image field
 
         // Get Odoo category ID
         $category = Category::find($validated['category_id']);
@@ -102,6 +135,16 @@ class ProductController extends Controller
             
             $path = $request->file('image')->store('products', 'public');
             $validated['image_path'] = $path;
+
+            // Convert image to base64 for Odoo
+            $imageContents = Storage::disk('public')->get($path);
+            $validated['image_1920'] = base64_encode($imageContents);
+        } else {
+            // If no new image, reuse existing image
+            if ($product->image_path) {
+                $imageContents = Storage::disk('public')->get($product->image_path);
+                $validated['image_1920'] = base64_encode($imageContents);
+            }
         }
 
         // Update product in Odoo
