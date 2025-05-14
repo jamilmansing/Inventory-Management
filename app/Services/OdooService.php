@@ -256,44 +256,7 @@ class OdooService
         return true;
     }
 
-    public function createProduct($productData)
-    {
-        $odooProductData = [
-            'name' => $productData['name'],
-            'default_code' => $productData['sku'],
-            'description' => $productData['description'],
-            'list_price' => $productData['price'],
-            'standard_price' => $productData['cost'],
-            'type' => 'product',
-            'categ_id' => $productData['odoo_category_id'],
-            'image_1920' =>$productData['image_path'] ?? null,
-            
-        ];
-
-        $productId = $this->executeKw('product.product', 'create', [$odooProductData]);
-        
-        return $productId;
-    }
-
-    public function updateProduct($odooProductId, $productData)
-    {
-        $odooProductData = [
-            'name' => $productData['name'],
-            'default_code' => $productData['sku'],
-            'description' => $productData['description'],
-            'list_price' => $productData['price'],
-            'standard_price' => $productData['cost'],
-            'image_1920' => $productData['image_1920'] ?? null,
-        ];
-
-        $result = $this->executeKw('product.product', 'write', [
-            [intval($odooProductId)],
-            $odooProductData
-        ]);
-        
-        return $result;
-    }
-
+    
     private function deleteOldProductImages($odooProductId){
         $pattern = "products/odoo_product_{$odooProductId}_*.png";
         $files = Storage::disk('public')->files('products');
@@ -304,7 +267,6 @@ class OdooService
             }
         }
     }
-
 
     private function deleteUnusedImages(array $usedImagePaths)
     {
@@ -320,27 +282,224 @@ class OdooService
 
     public function updateStock($odooProductId, $quantity, $reason = '')
     {
-        // This is a simplified version. In a real application, you would use
-        // Odoo's inventory adjustment functionality
-        $inventoryData = [
-            'product_id' => intval($odooProductId),
-            'product_qty' => $quantity,
-            'location_id' => 2, // Assumes stock location ID 2, adjust as needed
-            'name' => $reason
+        try {
+            Log::info("Updating stock for product {$odooProductId} to quantity {$quantity}");
+            
+            // First, get valid stock locations
+            $locations = $this->executeKw('stock.location', 'search_read', [
+                [['usage', '=', 'internal']], // Only get internal locations, not views
+                ['id', 'name', 'usage']
+            ]);
+            
+            if (empty($locations)) {
+                Log::error("No valid stock locations found in Odoo");
+                return false;
+            }
+            
+            // Use the first valid internal location
+            $locationId = $locations[0]['id'];
+            Log::info("Using stock location: {$locations[0]['name']} (ID: {$locationId})");
+            
+            // Check if the inventory module is available
+            $inventoryCheck = $this->executeKw('ir.model', 'search_count', [
+                [['model', '=', 'stock.inventory']]
+            ]);
+            
+            if ($inventoryCheck > 0) {
+                // Using stock.inventory for older Odoo versions
+                $inventoryData = [
+                    'name' => $reason ?: 'Stock adjustment from web interface',
+                    'location_id' => $locationId,
+                    'filter' => 'product',
+                    'product_id' => intval($odooProductId)
+                ];
+                
+                // Create inventory adjustment
+                $inventoryId = $this->executeKw('stock.inventory', 'create', [$inventoryData]);
+                
+                if (!$inventoryId) {
+                    Log::error("Failed to create inventory adjustment for product {$odooProductId}");
+                    return false;
+                }
+                
+                // Prepare the inventory line
+                $lineData = [
+                    'inventory_id' => $inventoryId,
+                    'product_id' => intval($odooProductId),
+                    'product_qty' => $quantity,
+                    'location_id' => $locationId
+                ];
+                
+                // Create inventory line
+                $lineId = $this->executeKw('stock.inventory.line', 'create', [$lineData]);
+                
+                if (!$lineId) {
+                    Log::error("Failed to create inventory line for product {$odooProductId}");
+                    return false;
+                }
+                
+                // Validate the inventory adjustment
+                $validated = $this->executeKw('stock.inventory', 'action_validate', [[$inventoryId]]);
+                
+                if ($validated) {
+                    Log::info("Stock updated successfully for product {$odooProductId}");
+                    return true;
+                } else {
+                    Log::error("Failed to validate inventory adjustment for product {$odooProductId}");
+                    return false;
+                }
+            } else {
+                // For newer Odoo versions that use stock.quant instead
+                Log::info("Using stock.quant for inventory adjustment");
+                
+                // Get the stock quant for this product
+                $quants = $this->executeKw('stock.quant', 'search_read', [
+                    [
+                        ['product_id', '=', intval($odooProductId)],
+                        ['location_id', '=', $locationId]
+                    ],
+                    ['id', 'location_id', 'quantity']
+                ]);
+                
+                if (empty($quants)) {
+                    // Create a new quant if none exists
+                    $quantData = [
+                        'product_id' => intval($odooProductId),
+                        'location_id' => $locationId,
+                        'quantity' => $quantity
+                    ];
+                    
+                    $quantId = $this->executeKw('stock.quant', 'create', [$quantData]);
+                    
+                    if ($quantId) {
+                        Log::info("Created new stock quant for product {$odooProductId}");
+                        return true;
+                    } else {
+                        Log::error("Failed to create stock quant for product {$odooProductId}");
+                        return false;
+                    }
+                } else {
+                    // Update existing quant
+                    $quant = $quants[0];
+                    $result = $this->executeKw('stock.quant', 'write', [
+                        [intval($quant['id'])],
+                        ['quantity' => $quantity]
+                    ]);
+                    
+                    if ($result) {
+                        Log::info("Updated existing stock quant for product {$odooProductId}");
+                        return true;
+                    } else {
+                        Log::error("Failed to update stock quant for product {$odooProductId}");
+                        return false;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error("Exception updating stock for product {$odooProductId}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function createProduct($productData)
+    {
+        // Prepare the product data for Odoo
+        $odooProductData = [
+            'name' => $productData['name'],
+            'default_code' => $productData['sku'],
+            'description' => $productData['description'],
+            'list_price' => $productData['price'],
+            'standard_price' => $productData['cost'],
+            'categ_id' => $productData['odoo_category_id']
         ];
 
-        $result = $this->executeKw('stock.inventory', 'create', [$inventoryData]);
-        
-        if ($result) {
-            $this->executeKw('stock.inventory', 'action_validate', [[$result]]);
-            return true;
+        // Handle image if present
+        if (isset($productData['image_path']) && !empty($productData['image_path'])) {
+            try {
+                // Read the image file
+                $imagePath = $productData['image_path'];
+                if (Storage::disk('public')->exists($imagePath)) {
+                    $imageContents = Storage::disk('public')->get($imagePath);
+                    
+                    // Convert to base64 for Odoo
+                    $odooProductData['image_1920'] = base64_encode($imageContents);
+                }
+            } catch (\Exception $e) {
+                Log::error('Error processing image for Odoo: ' . $e->getMessage());
+                // Continue without the image if there's an error
+            }
         }
+
+        // Create the product in Odoo
+        $productId = $this->executeKw('product.product', 'create', [$odooProductData]);
         
-        return false;
+        return $productId;
+    }
+
+    public function updateProduct($odooProductId, $productData)
+    {
+        try {
+            Log::info("Updating product in Odoo: ID {$odooProductId}");
+            
+            // Prepare the product data for Odoo
+            $odooProductData = [
+                'name' => $productData['name'],
+                'default_code' => $productData['sku'],
+                'description' => $productData['description'],
+                'list_price' => $productData['price'],
+                'standard_price' => $productData['cost']
+            ];
+
+            // Add category_id if present
+            if (isset($productData['category_id'])) {
+                // Get the Odoo category ID from the local category
+                $category = Category::find($productData['category_id']);
+                if ($category && $category->odoo_category_id) {
+                    $odooProductData['categ_id'] = intval($category->odoo_category_id);
+                    Log::info("Setting category_id to {$category->odoo_category_id} for product {$odooProductId}");
+                } else {
+                    Log::warning("Could not find Odoo category ID for local category {$productData['category_id']}");
+                }
+            }
+
+            // Handle image if present
+            if (isset($productData['image_1920']) && !empty($productData['image_1920'])) {
+                $odooProductData['image_1920'] = $productData['image_1920'];
+                Log::info("Updating image for product {$odooProductId}");
+            }
+
+            // Update the product in Odoo
+            $result = $this->executeKw('product.product', 'write', [
+                [intval($odooProductId)],
+                $odooProductData
+            ]);
+            
+            if ($result) {
+                Log::info("Product {$odooProductId} updated successfully in Odoo");
+                
+                // Handle quantity update separately
+                if (isset($productData['quantity'])) {
+                    Log::info("Updating stock quantity to {$productData['quantity']} for product {$odooProductId}");
+                    $stockResult = $this->updateStock(
+                        $odooProductId, 
+                        $productData['quantity'], 
+                        'Stock adjustment from web interface'
+                    );
+                    
+                    if (!$stockResult) {
+                        Log::error("Failed to update stock quantity for product {$odooProductId}");
+                        // Continue anyway since the product update was successful
+                    }
+                }
+                
+                return true;
+            } else {
+                Log::error("Failed to update product {$odooProductId} in Odoo");
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Exception updating product {$odooProductId}: " . $e->getMessage());
+            return false;
+        }
     }
 }
-
-
-
-
-
