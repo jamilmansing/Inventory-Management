@@ -6,6 +6,7 @@ use App\Models\Transaction;
 use App\Models\Product;
 use App\Services\OdooService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TransactionController extends Controller
 {
@@ -16,10 +17,40 @@ class TransactionController extends Controller
         $this->odooService = $odooService;
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $transactions = Transaction::with('product')->latest()->paginate(15);
-        return view('transactions.index', compact('transactions'));
+        // Start with a base query
+        $query = Transaction::with('product');
+        
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('reference', 'like', "%{$searchTerm}%")
+                  ->orWhere('notes', 'like', "%{$searchTerm}%")
+                  ->orWhereHas('product', function($query) use ($searchTerm) {
+                      $query->where('name', 'like', "%{$searchTerm}%");
+                  });
+            });
+        }
+        
+        // Apply type filter
+        if ($request->has('type') && !empty($request->type)) {
+            $query->where('type', $request->type);
+        }
+        
+        // Apply date filter
+        if ($request->has('date') && !empty($request->date)) {
+            $query->whereDate('created_at', $request->date);
+        }
+        
+        // Get transaction types for the filter dropdown
+        $types = Transaction::select('type')->distinct()->pluck('type');
+        
+        // Execute the query with pagination
+        $transactions = $query->latest()->paginate(15)->withQueryString();
+        
+        return view('transactions.index', compact('transactions', 'types'));
     }
 
     public function create()

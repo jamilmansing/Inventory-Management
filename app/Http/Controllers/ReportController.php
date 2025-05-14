@@ -7,7 +7,7 @@ use App\Models\Transaction;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PDF;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class ReportController extends Controller
 {
@@ -109,8 +109,8 @@ class ReportController extends Controller
         
         // Get product category sales
         $categorySales = Transaction::where('type', 'sale')
-            ->whereDate('created_at', '>=', $dateFrom)
-            ->whereDate('created_at', '<=', $dateTo)
+            ->whereDate('transactions.created_at', '>=', $dateFrom)  // Fixed
+            ->whereDate('transactions.created_at', '<=', $dateTo)    // Fixed
             ->join('products', 'transactions.product_id', '=', 'products.id')
             ->join('categories', 'products.category_id', '=', 'categories.id')
             ->select(
