@@ -61,7 +61,7 @@ class OdooService
     public function executeKw($model, $method, $args = [], $kwargs = [])
     {
         try {
-            // Disable SSL verification with the verify option set to false
+            
             $response = Http::withOptions([
                 'verify' => false,
             ])->post($this->url . '/jsonrpc', [
